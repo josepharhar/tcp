@@ -10,3 +10,7 @@ tcp: $(OBJS)
 .PHONY: run
 run: tcp
 	sudo ./tcp
+
+.PHONY: clean
+clean:
+	-rm -rf $(OBJS) tcp
