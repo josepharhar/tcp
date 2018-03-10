@@ -133,24 +133,41 @@ class TCP {
   uint16_t src_port;
   uint16_t dest_port;
   uint32_t seq;
-  uint32_t ack;
+  uint32_t ack_number;
 
  public:
-  uint8_t data_offset : 3;
+  /*uint8_t data_offset : 4; // length of header / 32
   uint8_t reserved : 3;
+  uint8_t ns : 1;*/
   uint8_t ns : 1;
-  uint8_t cwr : 1;
+  uint8_t reserved : 3;
+  uint8_t data_offset : 4;
+
+  /*uint8_t cwr : 1;
   uint8_t ece : 1;
   uint8_t urg : 1;
   uint8_t ack : 1;
   uint8_t psh : 1;
   uint8_t rst : 1;
   uint8_t syn : 1;
+  uint8_t fin : 1;*/
+
   uint8_t fin : 1;
+  uint8_t syn : 1;
+  uint8_t rst : 1;
+  uint8_t psh : 1;
+  uint8_t ack : 1;
+  uint8_t urg : 1;
+  uint8_t ece : 1;
+  uint8_t cwr : 1;
 
  private:
   uint16_t window_size;
+
+ public:
   uint16_t checksum;
+
+ private:
   uint16_t urgent_pointer;
 
  public:
@@ -160,8 +177,31 @@ class TCP {
   void SetDestPort(uint16_t new_dest_port) { dest_port = htons(new_dest_port); }
   uint32_t GetSeq() { return ntohl(seq); }
   void SetSeq(uint32_t new_seq) { seq = htonl(new_seq); }
-  uint32_t GetAck() { return ntohl(ack); }
-  void SetAck(uint32_t new_ack) { ack = htonl(new_ack); }
+  uint32_t GetAckNumber() { return ntohl(ack_number); }
+  void SetAckNumber(uint32_t new_ack_number) {
+    ack_number = htonl(new_ack_number);
+  }
+  uint16_t GetWindowSize() { return ntohs(window_size); }
+  void SetWindowSize(uint16_t new_window_size) {
+    window_size = htons(new_window_size);
+  }
+} __attribute__((packed));
+static_assert(sizeof(TCP) == 20, "wrong TCP size");
+
+class TCPPseudoHeader {
+ public:
+  uint8_t src_ip[4];
+  uint8_t dest_ip[4];
+  uint8_t reserved;
+  uint8_t protocol;
+
+ private:
+  uint16_t tcp_length;
+
+ public:
+  void SetTcpLength(uint16_t new_tcp_length) {
+    tcp_length = htons(new_tcp_length);
+  }
 } __attribute__((packed));
 
 #endif  // PACKETS_H_

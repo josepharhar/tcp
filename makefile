@@ -1,11 +1,15 @@
-FLAGS = -g -Wall -Werror
-OBJS = tcp.o
+C_FLAGS = -g -Wall -Werror -Wno-unused-function
+CXX_FLAGS = $(C_FLAGS) -std=c++11
+OBJS = tcp.o checksum.o
 
 %.o: %.cc *.h
-	g++ -c $(FLAGS) $^ -o $@
+	g++ $(CXX_FLAGS) $< -o $@ -c
+
+%.o: %.c *.h
+	gcc $(C_FLAGS) $< -o $@ -c
 
 tcp: $(OBJS)
-	g++ $(FLAGS) $(OBJS) -o $@
+	g++ checksum.o $(FLAGS) $^ -o $@ checksum.o
 
 .PHONY: run
 run: tcp
