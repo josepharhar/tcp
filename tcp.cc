@@ -21,7 +21,9 @@ int main(int argc, char** argv) {
   /*hints.ai_family = AF_UNSPEC;
   hints.ai_socktype = SOCK_STREAM;
   getaddrinfo("www.example.com", "3490", &hints, &res);*/
-  int getaddrinfo_retval = getaddrinfo("192.168.248.1", "51371", &hints, &res);
+  // int getaddrinfo_retval = getaddrinfo("192.168.248.1", "51371", &hints,
+  // &res);
+  int getaddrinfo_retval = getaddrinfo("127.0.0.1", "48880", &hints, &res);
   if (getaddrinfo_retval) {
     printf("getaddrinfo() returned %d, gai_strerror(): %s\n",
            getaddrinfo_retval, gai_strerror(getaddrinfo_retval));
@@ -43,9 +45,9 @@ int main(int argc, char** argv) {
   printf("writing to socket\n");
 
   uint16_t tcp_length = sizeof(TCP);
+
   TCPPseudoHeader* pseudo_header =
       (TCPPseudoHeader*)calloc(1, sizeof(TCPPseudoHeader) + tcp_length);
-
   pseudo_header->src_ip[0] = 192;
   pseudo_header->src_ip[1] = 168;
   pseudo_header->src_ip[2] = 248;
@@ -58,7 +60,6 @@ int main(int argc, char** argv) {
   pseudo_header->SetTcpLength(tcp_length);
 
   TCP* tcp = (TCP*)pseudo_header + 1;
-
   tcp->SetSrcPort(48881);
   tcp->SetDestPort(48880);
   tcp->SetSeq(0xd2113773);
@@ -67,9 +68,9 @@ int main(int argc, char** argv) {
   tcp->SetWindowSize(29200);
   tcp->checksum = in_cksum((short unsigned int*)pseudo_header, tcp_length);
 
-  int bytes_written = write(fd, &tcp, sizeof(tcp));
+  printf("tcp_length to write: %d\n", tcp_length);
+  int bytes_written = write(fd, tcp, tcp_length);
   free(pseudo_header);
-
   printf("write() returned %d\n", bytes_written);
 
   return 0;

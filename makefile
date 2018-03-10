@@ -9,7 +9,7 @@ OBJS = tcp.o checksum.o
 	gcc $(C_FLAGS) $< -o $@ -c
 
 tcp: $(OBJS)
-	g++ checksum.o $(FLAGS) $^ -o $@ checksum.o
+	g++ $(FLAGS) $^ -o $@
 
 .PHONY: run
 run: tcp
