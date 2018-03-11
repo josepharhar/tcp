@@ -8,12 +8,41 @@
 #include <netdb.h>
 
 //#include <linux/ip_fw.h>
+//#include <libiptc/libiptc.h>
+#include <linux/if_ether.h>
 
 #include "packets.h"
 #include "checksum.h"
 
 #define IP_PROTOCOL_TCP 6
 #define IP_PROTOCOL_UNKNOWN 250
+
+#define BUFFER_SIZE 2048
+
+static int socket_fd = -1;
+static int read_socket = -1;
+static uint8_t buffer[BUFFER_SIZE];
+
+static void ReadFromSocket(int socket) {
+  memset(buffer, 0, BUFFER_SIZE);
+  int bytes_read = read(socket, buffer, BUFFER_SIZE);
+  printf("read %d bytes from socket\n", bytes_read);
+
+  IP* ip = (IP*)buffer;
+  printf("  ip->version: %d\n", ip->version);
+  printf("  ip->length: %d\n", ip->length);
+  printf("  ip->GetTotalLength(): %d\n", ip->GetTotalLength());
+  printf("  src: %s\n", IPToString(ip->source).c_str());
+  printf("  dest: %s\n", IPToString(ip->destination).c_str());
+
+  Ethernet* ethernet = (Ethernet*)buffer;
+  printf("  ethernet dest: %s\n", ethernet->DestToString().c_str());
+  printf("  ethernet src: %s\n", ethernet->SrcToString().c_str());
+  printf("  ethernet type: %s\n", ethernet->TypeToString().c_str());
+
+  if (ethernet->GetType() == ETHERTYPE_IP) {
+  }
+}
 
 int main(int argc, char** argv) {
   addrinfo hints, *res = 0;
@@ -22,21 +51,27 @@ int main(int argc, char** argv) {
   hints.ai_socktype = SOCK_STREAM;
   getaddrinfo("www.example.com", "3490", &hints, &res);*/
   int getaddrinfo_retval =
-      getaddrinfo("192.168.248.130", "51371", &hints, &res);
+      getaddrinfo("192.168.248.130", "48880", &hints, &res);
   if (getaddrinfo_retval) {
     printf("getaddrinfo() returned %d, gai_strerror(): %s\n",
            getaddrinfo_retval, gai_strerror(getaddrinfo_retval));
     return 1;
   }
 
-  int fd = socket(AF_INET, SOCK_RAW, IP_PROTOCOL_TCP);
-  // int fd = socket(AF_INET, SOCK_RAW, IP_PROTOCOL_UNKNOWN);
-  if (fd < 0) {
-    printf("socket() returned %d. strerror(): %s\n", fd, strerror(errno));
+  socket_fd = socket(AF_INET, SOCK_RAW, IP_PROTOCOL_TCP);
+  if (socket_fd < 0) {
+    printf("socket() returned %d. strerror(): %s\n", socket_fd,
+           strerror(errno));
     return 1;
   }
 
-  if (connect(fd, res->ai_addr, res->ai_addrlen)) {
+  read_socket = socket(AF_PACKET, SOCK_RAW, htons(ETH_P_IP));
+  if (read_socket < 0) {
+    printf("socket(AF_PACKET) returned %d. strerror(): %s\n", read_socket,
+           strerror(errno));
+  }
+
+  if (connect(socket_fd, res->ai_addr, res->ai_addrlen)) {
     printf("connect() failed. strerror(): %s\n", strerror(errno));
     return 1;
   }
@@ -78,22 +113,15 @@ int main(int argc, char** argv) {
 
   memcpy(tcp + 1, payload, payload_length);
 
-  /*uint8_t* asdf = (uint8_t*)pseudo_header;
-  for (unsigned i = 0; i < tcp_pseudo_length; i++) {
-    printf("%02X", (int)asdf[i]);
-    if ((i + 1) % 8 == 0) {
-      printf(" ");
-    }
-    if ((i + 1) % 16 == 0) {
-      printf("\n");
-    }
-  }*/
   tcp->checksum = in_cksum((short unsigned*)pseudo_header, tcp_pseudo_length);
 
   printf("tcp_length to write: %d\n", tcp_length);
-  int bytes_written = write(fd, tcp, tcp_length);
+  int bytes_written = write(socket_fd, tcp, tcp_length);
   free(pseudo_header);
   printf("write() returned %d\n", bytes_written);
 
+  while (1) {
+    ReadFromSocket(read_socket);
+  }
   return 0;
 }
