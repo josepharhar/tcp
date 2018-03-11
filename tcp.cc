@@ -28,19 +28,25 @@ static void ReadFromSocket(int socket) {
   int bytes_read = read(socket, buffer, BUFFER_SIZE);
   printf("read %d bytes from socket\n", bytes_read);
 
-  IP* ip = (IP*)buffer;
-  printf("  ip->version: %d\n", ip->version);
-  printf("  ip->length: %d\n", ip->length);
-  printf("  ip->GetTotalLength(): %d\n", ip->GetTotalLength());
-  printf("  src: %s\n", IPToString(ip->source).c_str());
-  printf("  dest: %s\n", IPToString(ip->destination).c_str());
-
   Ethernet* ethernet = (Ethernet*)buffer;
   printf("  ethernet dest: %s\n", ethernet->DestToString().c_str());
   printf("  ethernet src: %s\n", ethernet->SrcToString().c_str());
   printf("  ethernet type: %s\n", ethernet->TypeToString().c_str());
 
   if (ethernet->GetType() == ETHERTYPE_IP) {
+    IP* ip = (IP*)(ethernet + 1);
+    printf("  ip->version: %d\n", ip->version);
+    printf("  ip->length: %d\n", ip->length);
+    printf("  ip->GetTotalLength(): %d\n", ip->GetTotalLength());
+    printf("  ip src: %s\n", IPToString(ip->source).c_str());
+    printf("  ip dest: %s\n", IPToString(ip->destination).c_str());
+    printf("  ip->protocol: %d\n", ip->protocol);
+
+    if (ip->protocol == PROTOCOL_TCP) {
+      TCP* tcp = (TCP*)(ip + 1);
+      printf("  tcp src port: %d\n", tcp->GetSrcPort());
+      printf("  tcp dest port: %d\n", tcp->GetDestPort());
+    }
   }
 }
 
