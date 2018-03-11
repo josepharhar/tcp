@@ -19,9 +19,14 @@
 
 #define BUFFER_SIZE 2048
 
+#define SRC_PORT 48881
+#define DEST_PORT 48880
+
 static int socket_fd = -1;
 static int read_socket = -1;
 static uint8_t buffer[BUFFER_SIZE];
+
+static void ReceivedTCP(TCP* tcp) {}
 
 static void ReadFromSocket(int socket) {
   memset(buffer, 0, BUFFER_SIZE);
@@ -46,6 +51,10 @@ static void ReadFromSocket(int socket) {
       TCP* tcp = (TCP*)(ip + 1);
       printf("  tcp src port: %d\n", tcp->GetSrcPort());
       printf("  tcp dest port: %d\n", tcp->GetDestPort());
+
+      if (tcp->GetSrcPort() == DEST_PORT && tcp->GetDestPort() == SRC_PORT) {
+        ReceivedTCP(tcp);
+      }
     }
   }
 }
