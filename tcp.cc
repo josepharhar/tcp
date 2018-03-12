@@ -47,46 +47,12 @@ class TCPClient {
     memcpy(my_ip_, my_ip, 4);
     memcpy(other_ip_, other_ip, 4);
 
+    my_seq_ = 4880;
+    other_seq_ = 0;
+
     TCPFlags send_flags;
     send_flags.syn = 1;
     Send(0, 0, send_flags.GetValue());
-
-    /*const char* payload = "";
-    int payload_length = 0;
-
-    // includes data after tcp header
-    uint16_t tcp_length = sizeof(TCP) + payload_length;
-    uint16_t tcp_pseudo_length = sizeof(TCPPseudoHeader) + tcp_length;
-
-    TCPPseudoHeader* pseudo_header =
-        (TCPPseudoHeader*)malloc(tcp_pseudo_length);
-    memset(pseudo_header, 0, tcp_pseudo_length);
-
-    memcpy(pseudo_header->src_ip, my_ip_, 4);
-    memcpy(pseudo_header->dest_ip, other_ip_, 4);
-    pseudo_header->reserved = 0;
-    pseudo_header->protocol = IP_PROTOCOL_TCP;
-    pseudo_header->SetTcpLength(tcp_length);
-
-    TCP* tcp = (TCP*)(pseudo_header + 1);
-    tcp->SetSrcPort(48881);
-    tcp->SetDestPort(48880);
-    tcp->SetSeq(my_seq_);
-    // data_offset must increase if using tcp options
-    tcp->data_offset = sizeof(TCP) / 4;
-    // tcp->syn = 1;
-    tcp->GetFlags()->syn = 1;
-    tcp->SetWindowSize(29200);
-
-    memcpy(tcp + 1, payload, payload_length);
-
-    tcp->checksum = in_cksum((short unsigned*)pseudo_header, tcp_pseudo_length);
-
-    printf("  tcp_length to write: %d\n", tcp_length);
-    int bytes_written = write(socket_fd, tcp, tcp_length);
-    free(pseudo_header);
-    printf("  write() returned %d\n", bytes_written);*/
-
     SetState(kSynSent);
   }
 
@@ -114,12 +80,18 @@ class TCPClient {
           Cancel();
           break;
         }
+        other_seq_ = tcp->GetSeq();
         // send an ack
         printf("  got synack. sending ack\n");
+        TCPFlags ack_flags;
+        ack_flags.ack = 1;
+        Send(0, 0, ack_flags.GetValue());
+        SetState(kEstablished);
         break;
       }
       case kEstablished:
         // TODO
+        printf("  kEstablished\n");
         break;
     }
   }
@@ -155,22 +127,24 @@ class TCPClient {
     TCP* tcp = (TCP*)(pseudo_header + 1);
     tcp->SetSrcPort(48881);
     tcp->SetDestPort(48880);
-    tcp->SetSeq(my_seq_);
+    tcp->SetSeq(my_seq_++);
+    tcp->SetAckNumber(other_seq_);
+    //tcp->SetAckNumber(other_seq_ + 1);
     // data_offset must increase if using tcp options
     tcp->data_offset = sizeof(TCP) / 4;
-    tcp->GetFlags()->syn = 1;
+    *(tcp->GetFlags()) = flags;
     tcp->SetWindowSize(29200);
 
     memcpy(tcp + 1, buffer, buffer_length);
 
     tcp->checksum = in_cksum((short unsigned*)pseudo_header, tcp_pseudo_length);
 
-    printf("  tcp_length to write: %d\n", tcp_length);
     int bytes_written = write(socket_fd, tcp, tcp_length);
     free(pseudo_header);
-    printf("  write() returned %d\n", bytes_written);
-
-    SetState(kSynSent);
+    if (bytes_written != tcp_length) {
+      printf("  UNABLE TO write() ENTIRE PACKET\n");
+      assert(false);
+    }
   }
 
   void SetState(State new_state) {
