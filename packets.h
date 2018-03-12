@@ -128,6 +128,34 @@ class IP {
   uint16_t GetChecksum() { return ntohs(checksum); }
 } __attribute__((packed));
 
+class TCPFlags {
+ public:
+  TCPFlags() { memset(this, 0, sizeof(TCPFlags)); }
+  TCPFlags(uint8_t flags) { memcpy(this, &flags, sizeof(TCPFlags)); }
+
+  uint8_t fin : 1;
+  uint8_t syn : 1;
+  uint8_t rst : 1;
+  uint8_t psh : 1;
+  uint8_t ack : 1;
+  uint8_t urg : 1;
+  uint8_t ece : 1;
+  uint8_t cwr : 1;
+
+  uint8_t GetValue() const {
+    uint8_t value;
+    memcpy(&value, this, sizeof(TCPFlags));
+    return value;
+  }
+
+  bool operator==(const TCPFlags& other) {
+    return GetValue() == other.GetValue();
+  }
+  bool operator!=(const TCPFlags& other) {
+    return !operator==(other);
+  }
+} __attribute__((packed));
+
 class TCP {
  private:
   uint16_t src_port;
@@ -138,16 +166,17 @@ class TCP {
  public:
   uint8_t ns : 1;
   uint8_t reserved : 3;
-  uint8_t data_offset : 4; // length of header / 4
+  uint8_t data_offset : 4;  // length of header / 4
 
-  uint8_t fin : 1;
+  /*uint8_t fin : 1;
   uint8_t syn : 1;
   uint8_t rst : 1;
   uint8_t psh : 1;
   uint8_t ack : 1;
   uint8_t urg : 1;
   uint8_t ece : 1;
-  uint8_t cwr : 1;
+  uint8_t cwr : 1;*/
+  uint8_t flags;
 
  private:
   uint16_t window_size;
@@ -173,6 +202,7 @@ class TCP {
   void SetWindowSize(uint16_t new_window_size) {
     window_size = htons(new_window_size);
   }
+  TCPFlags* GetFlags() { return (TCPFlags*)&flags; }
 } __attribute__((packed));
 static_assert(sizeof(TCP) == 20, "wrong TCP size");
 

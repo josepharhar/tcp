@@ -31,13 +31,13 @@ class TCPClient {
  public:
   // https://upload.wikimedia.org/wikipedia/commons/thumb/f/f6/Tcp_state_diagram_fixed_new.svg/1280px-Tcp_state_diagram_fixed_new.svg.png
   enum State {
-    kUninitialized,
-    kClosed,
-    kSynSent,
-    kEstablished,
+    kUninitialized = 0,
+    kClosed = 1,
+    kSynSent = 2,
+    kEstablished = 3,
   };
 
-  TCPClient() : state_(kUninitialized), {
+  TCPClient() : state_(kUninitialized) {
     // TODO make send_seq_ random
   }
 
@@ -47,7 +47,11 @@ class TCPClient {
     memcpy(my_ip_, my_ip, 4);
     memcpy(other_ip_, other_ip, 4);
 
-    const char* payload = "";
+    TCPFlags send_flags;
+    send_flags.syn = 1;
+    Send(0, 0, send_flags.GetValue());
+
+    /*const char* payload = "";
     int payload_length = 0;
 
     // includes data after tcp header
@@ -70,40 +74,59 @@ class TCPClient {
     tcp->SetSeq(my_seq_);
     // data_offset must increase if using tcp options
     tcp->data_offset = sizeof(TCP) / 4;
-    tcp->syn = 1;
+    // tcp->syn = 1;
+    tcp->GetFlags()->syn = 1;
     tcp->SetWindowSize(29200);
 
     memcpy(tcp + 1, payload, payload_length);
 
     tcp->checksum = in_cksum((short unsigned*)pseudo_header, tcp_pseudo_length);
 
-    printf("tcp_length to write: %d\n", tcp_length);
+    printf("  tcp_length to write: %d\n", tcp_length);
     int bytes_written = write(socket_fd, tcp, tcp_length);
     free(pseudo_header);
-    printf("write() returned %d\n", bytes_written);
+    printf("  write() returned %d\n", bytes_written);*/
 
     SetState(kSynSent);
   }
 
   void Receive(TCP* tcp) {
     printf("received tcp\n");
-    printf("  fin: %d, syn: %d, rst: %d, psh: %d\n", tcp->fin, tcp->syn,
-           tcp->rst, tcp->psh);
-    printf("  ack: %d, urg: %d, ece: %d, cwr: %d\n", tcp->ack, tcp->urg,
-           tcp->ece, tcp->cwr);
+    printf("  fin: %d, syn: %d, rst: %d, psh: %d\n", tcp->GetFlags()->fin,
+           tcp->GetFlags()->syn, tcp->GetFlags()->rst, tcp->GetFlags()->psh);
+    printf("  ack: %d, urg: %d, ece: %d, cwr: %d\n", tcp->GetFlags()->ack,
+           tcp->GetFlags()->urg, tcp->GetFlags()->ece, tcp->GetFlags()->cwr);
 
     switch (state_) {
+      case kUninitialized:
+        assert(false);
+        break;
       case kClosed:
         printf("  state is kClosed. nani!?\n");
         break;
-      case kSynSent:
+      case kSynSent: {
         // packet coming back should be SYN-ACK
+        TCPFlags expected_flags;
+        expected_flags.syn = 1;
+        expected_flags.ack = 1;
+        if (*(tcp->GetFlags()) != expected_flags) {
+          printf("  packet coming back should have been synack.\n");
+          Cancel();
+          break;
+        }
+        // send an ack
+        printf("  got synack. sending ack\n");
         break;
+      }
       case kEstablished:
         // TODO
         break;
     }
   }
+
+  void Cancel() { SetState(kClosed); }
+
+  void Send(void* buffer, int buffer_length);
 
  private:
   State state_;
@@ -114,6 +137,42 @@ class TCPClient {
   uint8_t my_ip_[4];
   uint8_t other_ip_[4];
 
+  void Send(void* buffer, int buffer_length, uint8_t flags) {
+    // includes data after tcp header
+    uint16_t tcp_length = sizeof(TCP) + buffer_length;
+    uint16_t tcp_pseudo_length = sizeof(TCPPseudoHeader) + tcp_length;
+
+    TCPPseudoHeader* pseudo_header =
+        (TCPPseudoHeader*)malloc(tcp_pseudo_length);
+    memset(pseudo_header, 0, tcp_pseudo_length);
+
+    memcpy(pseudo_header->src_ip, my_ip_, 4);
+    memcpy(pseudo_header->dest_ip, other_ip_, 4);
+    pseudo_header->reserved = 0;
+    pseudo_header->protocol = IP_PROTOCOL_TCP;
+    pseudo_header->SetTcpLength(tcp_length);
+
+    TCP* tcp = (TCP*)(pseudo_header + 1);
+    tcp->SetSrcPort(48881);
+    tcp->SetDestPort(48880);
+    tcp->SetSeq(my_seq_);
+    // data_offset must increase if using tcp options
+    tcp->data_offset = sizeof(TCP) / 4;
+    tcp->GetFlags()->syn = 1;
+    tcp->SetWindowSize(29200);
+
+    memcpy(tcp + 1, buffer, buffer_length);
+
+    tcp->checksum = in_cksum((short unsigned*)pseudo_header, tcp_pseudo_length);
+
+    printf("  tcp_length to write: %d\n", tcp_length);
+    int bytes_written = write(socket_fd, tcp, tcp_length);
+    free(pseudo_header);
+    printf("  write() returned %d\n", bytes_written);
+
+    SetState(kSynSent);
+  }
+
   void SetState(State new_state) {
     switch (new_state) {
       case kUninitialized:
@@ -122,6 +181,9 @@ class TCPClient {
       case kClosed:
         break;
       case kSynSent:
+        if (state_ != kClosed) {
+          printf("state_: %d, new_state: %d\n", state_, new_state);
+        }
         assert(state_ == kClosed);
         break;
       case kEstablished:
