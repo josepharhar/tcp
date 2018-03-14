@@ -7,6 +7,7 @@
 #include <errno.h>
 #include <netdb.h>
 #include <assert.h>
+#include <time.h>
 
 //#include <linux/ip_fw.h>
 //#include <libiptc/libiptc.h>
@@ -50,6 +51,7 @@ class TCPClient {
     my_port_ = my_port;
     other_port_ = other_port;
 
+    srand(time(0));
     my_seq_ = rand() % UINT32_MAX + 1;
     init_my_seq_ = my_seq_;
     other_seq_ = 0;
@@ -230,7 +232,10 @@ class TCPClient {
 
     memcpy(tcp + 1, buffer, buffer_length);
 
+    tcp->checksum = 0;
     tcp->checksum = in_cksum((short unsigned*)pseudo_header, tcp_pseudo_length);
+    tcp->checksum = htons(ntohs(tcp->checksum) + 9);
+    //tcp->GenerateChecksum(my_ip_, other_ip_, buffer, buffer_length);
 
     int bytes_written = write(socket_fd, tcp, tcp_length);
     free(pseudo_header);

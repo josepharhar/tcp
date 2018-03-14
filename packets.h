@@ -125,7 +125,7 @@ class IPAddr {
 
 class IP {
  public:
-  uint8_t length : 4;                     // sizeof this struct / 32
+  uint8_t length : 4;  // sizeof this struct / 32
   uint8_t version : 4;
   uint8_t differentiated_services_field;  // aka TOS
  private:
@@ -158,14 +158,14 @@ class TCPFlags {
   TCPFlags() { memset(this, 0, sizeof(TCPFlags)); }
   TCPFlags(uint8_t flags) { memcpy(this, &flags, sizeof(TCPFlags)); }
 
-  uint8_t cwr : 1;
-  uint8_t ece : 1;
-  uint8_t urg : 1;
-  uint8_t ack : 1;
-  uint8_t psh : 1;
-  uint8_t rst : 1;
-  uint8_t syn : 1;
   uint8_t fin : 1;
+  uint8_t syn : 1;
+  uint8_t rst : 1;
+  uint8_t psh : 1;
+  uint8_t ack : 1;
+  uint8_t urg : 1;
+  uint8_t ece : 1;
+  uint8_t cwr : 1;
 
   uint8_t GetValue() const {
     uint8_t value;
@@ -179,6 +179,28 @@ class TCPFlags {
   bool operator!=(const TCPFlags& other) { return !operator==(other); }
 } __attribute__((packed));
 
+static uint16_t SwapBits(uint16_t value) {
+  uint16_t high_bits = (value << 8) & 0xFF00;
+  uint16_t low_bits = value & 0xFF;
+  return high_bits | low_bits;
+}
+
+class TCPPseudoHeader {
+ public:
+  uint8_t src_ip[4];
+  uint8_t dest_ip[4];
+  uint8_t reserved;
+  uint8_t protocol;
+
+ private:
+  uint16_t tcp_length;
+
+ public:
+  void SetTcpLength(uint16_t new_tcp_length) {
+    tcp_length = htons(new_tcp_length);
+  }
+} __attribute__((packed));
+
 class TCP {
  private:
   uint16_t src_port;
@@ -187,9 +209,9 @@ class TCP {
   uint32_t ack_number;
 
  public:
-  uint8_t data_offset : 4;  // length of header / 4
-  uint8_t reserved : 3;
   uint8_t ns : 1;
+  uint8_t reserved : 3;
+  uint8_t data_offset : 4;  // length of header / 4
 
   /*uint8_t fin : 1;
   uint8_t syn : 1;
@@ -226,24 +248,49 @@ class TCP {
     window_size = htons(new_window_size);
   }
   TCPFlags* GetFlags() { return (TCPFlags*)&flags; }
+
   int GetHeaderLength() { return data_offset * 4; }
-} __attribute__((packed));
-static_assert(sizeof(TCP) == 20, "wrong TCP size");
+  void GenerateChecksum(uint8_t* src_ip,
+                        uint8_t* dest_ip,
+                        const void* payload,
+                        int payload_length) {
+    checksum = 0;
+    uint64_t total = 0;
 
-class TCPPseudoHeader {
- public:
-  uint8_t src_ip[4];
-  uint8_t dest_ip[4];
-  uint8_t reserved;
-  uint8_t protocol;
+    TCPPseudoHeader pseudo_header;
+    memcpy(pseudo_header.src_ip, src_ip, 4);
+    memcpy(pseudo_header.dest_ip, dest_ip, 4);
+    pseudo_header.reserved = 0;
+    pseudo_header.protocol = PROTOCOL_TCP;
+    pseudo_header.SetTcpLength(sizeof(TCP) + payload_length);
+    for (unsigned i = 0; i < sizeof(TCP) / 2; i++) {
+      uint16_t* bits = (uint16_t*)&pseudo_header;
+      total += SwapBits(bits[i]);
+    }
 
- private:
-  uint16_t tcp_length;
+    for (int i = 0; i < GetHeaderLength() / 2; i++) {
+      uint16_t* bits = (uint16_t*)this;
+      total += SwapBits(bits[i]);
+    }
 
- public:
-  void SetTcpLength(uint16_t new_tcp_length) {
-    tcp_length = htons(new_tcp_length);
+    for (int i = 0; i < payload_length / 2; i++) {
+      uint16_t* bits = (uint16_t*)payload;
+      total += SwapBits(bits[i]);
+    }
+    if (payload_length % 2) {
+      uint16_t low_bits = *((uint8_t*)&pseudo_header) & 0xFF;
+      // uint16_t high_bits = *((uint8_t*)
+      uint16_t high_bits = *(((uint8_t*)payload) + payload_length - 1) & 0xFF;
+      uint16_t bits_total = ((high_bits << 8) & 0xFF00) | low_bits;
+      total += bits_total;
+    }
+
+    uint16_t base_bits = total & 0xFFFF;
+    uint16_t extra_bits = (total & 0xFFFFFFFFFFFF0000) >> 16;
+
+    checksum = base_bits + extra_bits;
   }
 } __attribute__((packed));
+static_assert(sizeof(TCP) == 20, "wrong TCP size");
 
 #endif  // PACKETS_H_
