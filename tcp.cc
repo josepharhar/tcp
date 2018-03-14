@@ -148,9 +148,6 @@ class TCPClient {
 
       case kEstablished:
         if (tcp->GetSeq() != other_seq_) {
-          /*printf("  BAD tcp->GetSeq(): %u, other_seq_: %u init_other_seq:
-             %u\n",
-                 tcp->GetSeq(), other_seq_, init_other_seq_);*/
           printf("  BAD tcp->GetSeq(): %u\n", tcp->GetSeq());
           printf("         other_seq_: %u\n", other_seq_);
           printf("    init_other_seq_: %u\n", init_other_seq_);

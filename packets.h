@@ -158,14 +158,14 @@ class TCPFlags {
   TCPFlags() { memset(this, 0, sizeof(TCPFlags)); }
   TCPFlags(uint8_t flags) { memcpy(this, &flags, sizeof(TCPFlags)); }
 
-  uint8_t fin : 1;
-  uint8_t syn : 1;
-  uint8_t rst : 1;
-  uint8_t psh : 1;
-  uint8_t ack : 1;
-  uint8_t urg : 1;
-  uint8_t ece : 1;
   uint8_t cwr : 1;
+  uint8_t ece : 1;
+  uint8_t urg : 1;
+  uint8_t ack : 1;
+  uint8_t psh : 1;
+  uint8_t rst : 1;
+  uint8_t syn : 1;
+  uint8_t fin : 1;
 
   uint8_t GetValue() const {
     uint8_t value;
@@ -187,9 +187,9 @@ class TCP {
   uint32_t ack_number;
 
  public:
-  uint8_t ns : 1;
-  uint8_t reserved : 3;
   uint8_t data_offset : 4;  // length of header / 4
+  uint8_t reserved : 3;
+  uint8_t ns : 1;
 
   /*uint8_t fin : 1;
   uint8_t syn : 1;
