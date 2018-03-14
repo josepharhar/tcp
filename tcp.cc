@@ -74,9 +74,9 @@ class TCPClient {
   void Receive(IP* ip, int size) {
     if (size >= (int)sizeof(IP) && IPAddr(my_ip_) == ip->GetDest() &&
         IPAddr(other_ip_) == ip->GetSrc() && ip->protocol == PROTOCOL_TCP) {
-      //Receive((TCP*)(ip + 1), size - sizeof(IP));
-      printf(" ip->GetTotalLength(): %u, ip->GetHeaderLength(): %u\n",
-          ip->GetTotalLength(), ip->GetHeaderLength());
+      // Receive((TCP*)(ip + 1), size - sizeof(IP));
+      /*printf("  ip->GetTotalLength(): %u, ip->GetHeaderLength(): %u\n",
+             ip->GetTotalLength(), ip->GetHeaderLength());*/
       Receive((TCP*)(ip + 1), ip->GetTotalLength() - ip->GetHeaderLength());
     } else {
       /*printf("DROPPING not my ips or not tcp\n");
@@ -148,9 +148,6 @@ class TCPClient {
 
       case kEstablished:
         if (tcp->GetSeq() != other_seq_) {
-          /*printf("  BAD tcp->GetSeq(): %u, other_seq_: %u init_other_seq:
-             %u\n",
-                 tcp->GetSeq(), other_seq_, init_other_seq_);*/
           printf("  BAD tcp->GetSeq(): %u\n", tcp->GetSeq());
           printf("         other_seq_: %u\n", other_seq_);
           printf("    init_other_seq_: %u\n", init_other_seq_);
@@ -159,12 +156,26 @@ class TCPClient {
         if (payload_size) {
           char* payload = (char*)calloc(1, payload_size + 1);
           memcpy(payload, tcp + 1, payload_size);
-          printf(
+          /*printf(
               "  sizeof(TCP): %lu, tcp->GetHeaderLength(): %d, full size: %d\n",
-              sizeof(TCP), tcp->GetHeaderLength(), size);
+              sizeof(TCP), tcp->GetHeaderLength(), size);*/
           printf("  %d byte payload:\n%s\n", payload_size, payload);
         }
+        if (!payload_size) {
+          printf("  no payload, should other_seq_ be incremented??\n");
+        }
         other_seq_ += payload_size;
+
+        if (tcp->GetFlags()->fin) {
+          // TODO only send fin back when we are done sending data n stuff.
+          printf("  received fin, sending fin back.\n");
+          TCPFlags fin_flags;
+          fin_flags.fin = 1;
+          fin_flags.ack = 1;
+          other_seq_++;  // TODO delet this
+          Send(0, 0, fin_flags.GetValue());
+        }
+
         break;
     }
   }
@@ -223,7 +234,13 @@ class TCPClient {
     tcp->SetSrcPort(48881);
     tcp->SetDestPort(48880);
     tcp->SetSeq(my_seq_);
+
     my_seq_ += buffer_length;
+    if (!buffer_length) {
+      printf(
+          "  sending with no buffer_length. should my_seq_ be incremented??\n");
+    }
+
     tcp->SetAckNumber(other_seq_);
     // tcp->SetAckNumber(other_seq_ + 1);
     // data_offset must increase if using tcp options
