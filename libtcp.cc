@@ -268,8 +268,8 @@ class TCPClient {
     pseudo_header->SetTcpLength(tcp_length);
 
     TCP* tcp = (TCP*)(pseudo_header + 1);
-    tcp->SetSrcPort(48881);
-    tcp->SetDestPort(48880);
+    tcp->SetSrcPort(my_port_);
+    tcp->SetDestPort(other_port_);
     tcp->SetSeq(my_seq_);
 
     my_seq_ += buffer_length;
