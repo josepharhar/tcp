@@ -27,8 +27,8 @@
 
 #ifdef DEBUG
 #define printd(...)                             \
-  printf("[%s:%03d] ", __FUNCTION__, __LINE__); \
-  printf(__VA_ARGS__);
+  fprintf(stderr, "[%s:%03d] ", __FUNCTION__, __LINE__); \
+  fprintf(stderr, __VA_ARGS__);
 #else
 #define printd(...) \
   while (0)         \
