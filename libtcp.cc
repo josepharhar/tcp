@@ -69,32 +69,19 @@ class TCPClient {
   void Receive(Ethernet* ethernet, int size) {
     if (size >= (int)sizeof(Ethernet) && ethernet->GetType() == ETHERTYPE_IP) {
       Receive((IP*)(ethernet + 1), size - sizeof(Ethernet));
-    } else {
-      // printf("DROPPING not ethertype ip\n");
     }
   }
 
   void Receive(IP* ip, int size) {
     if (size >= (int)sizeof(IP) && IPAddr(my_ip_) == ip->GetDest() &&
         IPAddr(other_ip_) == ip->GetSrc() && ip->protocol == PROTOCOL_TCP) {
-      // Receive((TCP*)(ip + 1), size - sizeof(IP));
-      /*printf("  ip->GetTotalLength(): %u, ip->GetHeaderLength(): %u\n",
-             ip->GetTotalLength(), ip->GetHeaderLength());*/
       Receive((TCP*)(ip + 1), ip->GetTotalLength() - ip->GetHeaderLength());
-    } else {
-      /*printf("DROPPING not my ips or not tcp\n");
-      printf("  src: %s, dest: %s, proto: %d\n",
-             ip->GetSrc().ToString().c_str(), ip->GetDest().ToString().c_str(),
-             ip->protocol);
-      printf("  other: %s, my: %s\n", IPAddr(other_ip_).ToString().c_str(),
-             IPAddr(my_ip_).ToString().c_str());*/
     }
   }
 
   void Receive(TCP* tcp, int size) {
     if (size < (int)sizeof(TCP) || tcp->GetSrcPort() != other_port_ ||
         tcp->GetDestPort() != my_port_) {
-      // printf("DROPPING not my ports\n");
       return;
     }
 
@@ -324,12 +311,14 @@ int libtcp_open(uint8_t* my_ip,
 
   char dest_ip_string[50];
   memset(dest_ip_string, 0, 50);
-  snprintf(dest_ip_string, 50, "%d.%d.%d.%d", (int)my_ip[0], (int)my_ip[1],
-           (int)my_ip[2], (int)my_ip[3]);
+  snprintf(dest_ip_string, 50, "%d.%d.%d.%d", (int)dest_ip[0], (int)dest_ip[1],
+           (int)dest_ip[2], (int)dest_ip[3]);
+  printf("dest_ip_string: %s\n", dest_ip_string);
 
   char dest_port_string[50];
   memset(dest_port_string, 0, 50);
   snprintf(dest_port_string, 50, "%d", dest_port);
+  printf("dest_port_string: %s\n", dest_port_string);
 
   int getaddrinfo_retval =
       getaddrinfo(dest_ip_string, dest_port_string, &hints, &res);
@@ -343,18 +332,12 @@ int libtcp_open(uint8_t* my_ip,
   if (send_socket_fd < 0) {
     printf("[libtcp_open] socket() returned %d. strerror(): %s\n",
            send_socket_fd, strerror(errno));
-    return 1;
+    return -1;
   }
-
-  /*read_socket = socket(AF_PACKET, SOCK_RAW, htons(ETH_P_IP));
-  if (read_socket < 0) {
-    printf("socket(AF_PACKET) returned %d. strerror(): %s\n", read_socket,
-           strerror(errno));
-  }*/
 
   if (connect(send_socket_fd, res->ai_addr, res->ai_addrlen)) {
     printf("[libtcp_open] connect() failed. strerror(): %s\n", strerror(errno));
-    return 1;
+    return -1;
   }
 
   int libtcp_fd = FindUnusedFd();
@@ -363,11 +346,6 @@ int libtcp_open(uint8_t* my_ip,
   new_client->Start(send_socket_fd, my_ip, dest_ip, my_port, dest_port);
 
   return libtcp_fd;
-
-  /*while (1) {
-    ReadFromSocket(read_socket);
-  }
-  return 0;*/
 }
 
 int libtcp_send(int libtcp_fd, void* buffer, int length) {
@@ -378,7 +356,7 @@ int libtcp_send(int libtcp_fd, void* buffer, int length) {
   // TODO will this work?
   client->Send(buffer, length);
 
-  return length; // TODO
+  return length;  // TODO
 }
 
 void libtcp_loop(LibTcpLoopFunction loop_function) {
