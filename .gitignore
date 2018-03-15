@@ -1,2 +1,4 @@
 tcp
+wget
+*.a
 *.o
