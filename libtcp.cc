@@ -1,3 +1,5 @@
+#include "libtcp.h"
+
 #include <stdio.h>
 #include <sys/socket.h>
 #include <sys/types.h>
@@ -12,6 +14,8 @@
 //#include <libiptc/libiptc.h>
 #include <linux/if_ether.h>
 
+#include <map>
+
 #include "packets.h"
 #include "checksum.h"
 
@@ -20,7 +24,6 @@
 
 #define BUFFER_SIZE 2048
 
-static int socket_fd = -1;
 static int read_socket = -1;
 static uint8_t buffer[BUFFER_SIZE];
 
@@ -197,7 +200,12 @@ class TCPClient {
     SetState(kClosed);
   }
 
-  // void Send(void* buffer, int buffer_length) {}
+  void Send(void* buffer, int buffer_length) {
+    TCPFlags flags;
+    flags.ack = 1;
+    flags.psh = 1;
+    Send(buffer, buffer_length, flags.GetValue());
+  }
 
  private:
   State state_;
@@ -252,7 +260,7 @@ class TCPClient {
 
     tcp->checksum = in_cksum((short unsigned*)pseudo_header, tcp_pseudo_length);
 
-    int bytes_written = write(socket_fd, tcp, tcp_length);
+    int bytes_written = write(send_socket_, tcp, tcp_length);
     free(pseudo_header);
     if (bytes_written != tcp_length) {
       printf("  UNABLE TO write() ENTIRE PACKET! wrote %d, expected %d\n",
@@ -282,21 +290,118 @@ class TCPClient {
   }
 };
 
-TCPClient tcp_client;
+static std::map<int, TCPClient*> libtcp_fd_to_client;
+
+static int FindUnusedFd() {
+  for (int i = 0; i < 65536; i++) {
+    if (libtcp_fd_to_client.find(i) == libtcp_fd_to_client.end()) {
+      return i;
+    }
+  }
+  return -1;
+}
 
 static void ReadFromSocket(int socket) {
   memset(buffer, 0, BUFFER_SIZE);
   int bytes_read = read(socket, buffer, BUFFER_SIZE);
   // printf("read() %d bytes\n", bytes_read);
-  tcp_client.Receive((Ethernet*)buffer, bytes_read);
+  for (auto it = libtcp_fd_to_client.begin(); it != libtcp_fd_to_client.end();
+       it++) {
+    TCPClient* client = it->second;
+    client->Receive((Ethernet*)buffer, bytes_read);
+  }
 }
 
-int main(int argc, char** argv) {
+int libtcp_open(uint8_t* my_ip,
+                uint8_t* dest_ip,
+                uint16_t my_port,
+                uint16_t dest_port) {
   addrinfo hints, *res = 0;
   memset(&hints, 0, sizeof(addrinfo));
   /*hints.ai_family = AF_UNSPEC;
   hints.ai_socktype = SOCK_STREAM;
   getaddrinfo("www.example.com", "3490", &hints, &res);*/
+
+  char dest_ip_string[50];
+  memset(dest_ip_string, 0, 50);
+  snprintf(dest_ip_string, 50, "%d.%d.%d.%d", (int)my_ip[0], (int)my_ip[1],
+           (int)my_ip[2], (int)my_ip[3]);
+
+  char dest_port_string[50];
+  memset(dest_port_string, 0, 50);
+  snprintf(dest_port_string, 50, "%d", dest_port);
+
+  int getaddrinfo_retval =
+      getaddrinfo(dest_ip_string, dest_port_string, &hints, &res);
+  if (getaddrinfo_retval) {
+    printf("[libtcp_open] getaddrinfo() returned %d, gai_strerror(): %s\n",
+           getaddrinfo_retval, gai_strerror(getaddrinfo_retval));
+    return -1;
+  }
+
+  int send_socket_fd = socket(AF_INET, SOCK_RAW, IP_PROTOCOL_TCP);
+  if (send_socket_fd < 0) {
+    printf("[libtcp_open] socket() returned %d. strerror(): %s\n",
+           send_socket_fd, strerror(errno));
+    return 1;
+  }
+
+  /*read_socket = socket(AF_PACKET, SOCK_RAW, htons(ETH_P_IP));
+  if (read_socket < 0) {
+    printf("socket(AF_PACKET) returned %d. strerror(): %s\n", read_socket,
+           strerror(errno));
+  }*/
+
+  if (connect(send_socket_fd, res->ai_addr, res->ai_addrlen)) {
+    printf("[libtcp_open] connect() failed. strerror(): %s\n", strerror(errno));
+    return 1;
+  }
+
+  int libtcp_fd = FindUnusedFd();
+  TCPClient* new_client = new TCPClient();
+  libtcp_fd_to_client[libtcp_fd] = new_client;
+  new_client->Start(send_socket_fd, my_ip, dest_ip, my_port, dest_port);
+
+  return libtcp_fd;
+
+  /*while (1) {
+    ReadFromSocket(read_socket);
+  }
+  return 0;*/
+}
+
+int libtcp_send(int libtcp_fd, void* buffer, int length) {
+  if (libtcp_fd_to_client.find(libtcp_fd) == libtcp_fd_to_client.end()) {
+    return -1;
+  }
+  TCPClient* client = libtcp_fd_to_client[libtcp_fd];
+  // TODO will this work?
+  client->Send(buffer, length);
+
+  return length; // TODO
+}
+
+void libtcp_loop(LibTcpLoopFunction loop_function) {
+  if (read_socket < 0) {
+    read_socket = socket(AF_PACKET, SOCK_RAW, htons(ETH_P_IP));
+    if (read_socket < 0) {
+      printf("socket(AF_PACKET) returned %d. strerror(): %s\n", read_socket,
+             strerror(errno));
+      return;
+    }
+  }
+
+  while (1) {
+    ReadFromSocket(read_socket);
+  }
+}
+
+/*int main(int argc, char** argv) {
+  addrinfo hints, *res = 0;
+  memset(&hints, 0, sizeof(addrinfo));
+  //hints.ai_family = AF_UNSPEC;
+  //hints.ai_socktype = SOCK_STREAM;
+  //getaddrinfo("www.example.com", "3490", &hints, &res);
   int getaddrinfo_retval =
       getaddrinfo("192.168.248.130", "48880", &hints, &res);
   if (getaddrinfo_retval) {
@@ -333,4 +438,4 @@ int main(int argc, char** argv) {
     ReadFromSocket(read_socket);
   }
   return 0;
-}
+}*/
