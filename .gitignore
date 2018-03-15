@@ -2,3 +2,4 @@ tcp
 wget
 *.a
 *.o
+index.html*
