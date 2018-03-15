@@ -14,13 +14,13 @@ static void LoopFunction(const void* buffer, int buffer_length) {
   memcpy(data_buffer + current_position, buffer, buffer_length);
   current_position += buffer_length;
 
-  char* payload = (char*)calloc(1, buffer_length + 1);
+  /*char* payload = (char*)calloc(1, buffer_length + 1);
   memcpy(payload, buffer, buffer_length);
-  printf("%d byte payload:\n%s\n", buffer_length, payload);
+  printf("%d byte payload:\n%s\n", buffer_length, payload);*/
 }
 
 int main(int argc, char** argv) {
-  uint8_t my_ip[4] = {192, 168, 248, 130};
+  uint8_t my_ip[4] = {192, 168, 248, 1};
 
   uint8_t dest_ip[4] = {0, 0, 0, 0};
   uint16_t my_port = 48881;
@@ -36,24 +36,16 @@ int main(int argc, char** argv) {
   unsigned temp_ip_addr[4] = {0, 0, 0, 0};
   sscanf(argv[1], "%u.%u.%u.%u:%hu%s\n", &temp_ip_addr[0], &temp_ip_addr[1],
          &temp_ip_addr[2], &temp_ip_addr[3], &dest_port, path_buffer);
-  printf("HERE: %u.%u.%u.%u:%hu%s\n", temp_ip_addr[0], temp_ip_addr[1],
-         temp_ip_addr[2], temp_ip_addr[3], dest_port, path_buffer);
   dest_ip[0] = (uint8_t)temp_ip_addr[0];
   dest_ip[1] = (uint8_t)temp_ip_addr[1];
   dest_ip[2] = (uint8_t)temp_ip_addr[2];
   dest_ip[3] = (uint8_t)temp_ip_addr[3];
-
-  char dest_ip_string[50];
-  snprintf(dest_ip_string, 50, "%d.%d.%d.%d", (int)dest_ip[0], (int)dest_ip[1],
-           (int)dest_ip[2], (int)dest_ip[3]);
-  printf("dest_ip_string: %s\n", dest_ip_string);
 
   libtcp_socket = libtcp_open(my_ip, dest_ip, my_port, dest_port);
   if (libtcp_socket < 0) {
     printf("libtcp_open() returned %d\n", libtcp_socket);
     return 1;
   }
-  printf("HERE1\n");
   // const char* http_request = "GET /json/implemented.json\n\n";
   const char* http_method = "GET";
   char buffer[256] = {0};
@@ -63,13 +55,10 @@ int main(int argc, char** argv) {
   sprintf(buffer, "%s %s\n\n", http_method, path_buffer);
   printf("URL: %s\n", buffer);
   // libtcp_send(libtcp_socket, http_request, strlen(http_request));
-  printf("HERE2\n");
   libtcp_send(libtcp_socket, buffer, strlen(buffer));
 
-  printf("HERE3\n");
   libtcp_loop(LoopFunction);
-  printf("HERE4\n");
-  printf("libtcp_loop returned\n");
+  printf("finished http request, writing to file...\n");
   fwrite(data_buffer, sizeof(char), current_position, fp);
   fclose(fp);
 

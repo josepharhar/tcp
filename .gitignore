@@ -2,4 +2,5 @@ tcp
 wget
 *.a
 *.o
-index.html*
+*.html*
+*.json*

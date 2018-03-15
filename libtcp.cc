@@ -115,7 +115,7 @@ class TCPClient {
         break;
 
       case kClosed:
-        printd("  state is kClosed. nani!?\n");
+        printd("  state is kClosed, ignoring received packet\n");
         break;
 
       case kSynSent: {
@@ -289,6 +289,8 @@ class TCPClient {
     memcpy(tcp + 1, buffer, buffer_length);
 
     tcp->checksum = in_cksum((short unsigned*)pseudo_header, tcp_pseudo_length);
+    //tcp->checksum = htons(ntohs(tcp->checksum) + 0x81);
+    //tcp->checksum += 0x8100;
 
     int bytes_written = write(send_socket_, tcp, tcp_length);
     free(pseudo_header);
