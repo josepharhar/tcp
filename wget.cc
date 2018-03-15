@@ -1,11 +1,15 @@
 #include <stdio.h>
+#include <string.h>
+#include <stdlib.h>
 
 #include "libtcp.h"
 
 static int libtcp_socket = -1;
 
-static void LoopFunction(void* buffer, int buffer_length) {
-  printf("LoopFunction\n");
+static void LoopFunction(const void* buffer, int buffer_length) {
+  char* payload = (char*)calloc(1, buffer_length + 1);
+  memcpy(payload, buffer, buffer_length);
+  printf("%d byte payload:\n%s\n", buffer_length, payload);
 }
 
 int main(int argc, char** argv) {
@@ -19,6 +23,9 @@ int main(int argc, char** argv) {
     printf("libtcp_open() returned %d\n", libtcp_socket);
     return 1;
   }
+
+  const char* http_request = "GET /asdf\n\n";
+  libtcp_send(libtcp_socket, http_request, strlen(http_request));
 
   libtcp_loop(LoopFunction);
 

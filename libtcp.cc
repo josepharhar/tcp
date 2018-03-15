@@ -15,6 +15,7 @@
 #include <linux/if_ether.h>
 
 #include <map>
+#include <vector>
 
 #include "packets.h"
 #include "checksum.h"
@@ -26,6 +27,8 @@
 
 static int read_socket = -1;
 static uint8_t buffer[BUFFER_SIZE];
+
+static LibTcpLoopFunction g_loop_function = 0;
 
 class TCPClient {
  public:
@@ -87,11 +90,11 @@ class TCPClient {
 
     int payload_size = size - tcp->data_offset * 4;
 
-    printf("received tcp. state: %d\n", state_);
+    /*printf("received tcp. state: %d\n", state_);
     printf("  fin: %d, syn: %d, rst: %d, psh: %d\n", tcp->GetFlags()->fin,
            tcp->GetFlags()->syn, tcp->GetFlags()->rst, tcp->GetFlags()->psh);
     printf("  ack: %d, urg: %d, ece: %d, cwr: %d\n", tcp->GetFlags()->ack,
-           tcp->GetFlags()->urg, tcp->GetFlags()->ece, tcp->GetFlags()->cwr);
+           tcp->GetFlags()->urg, tcp->GetFlags()->ece, tcp->GetFlags()->cwr);*/
 
     switch (state_) {
       case kUninitialized:
@@ -124,14 +127,14 @@ class TCPClient {
         TCPFlags ack_flags;
         ack_flags.ack = 1;
         Send(0, 0, ack_flags.GetValue());
+
         SetState(kEstablished);
 
-        // send some data
-        const char* request = "GET /json/implemented.json\n\n";
-        TCPFlags request_flags;
-        request_flags.psh = 1;
-        request_flags.ack = 1;
-        Send(request, strlen(request), request_flags.GetValue());
+        // send all buffered packets
+        for (unsigned i = 0; i < buffered_packets_to_send_.size(); i++) {
+          auto buffered_packet = buffered_packets_to_send_[i];
+          Send(buffered_packet.first, buffered_packet.second);
+        }
 
         break;
       }
@@ -144,15 +147,18 @@ class TCPClient {
           break;
         }
         if (payload_size) {
-          char* payload = (char*)calloc(1, payload_size + 1);
+          /*char* payload = (char*)calloc(1, payload_size + 1);
           memcpy(payload, tcp + 1, payload_size);
+          printf("  %d byte payload:\n%s\n", payload_size, payload);*/
           /*printf(
               "  sizeof(TCP): %lu, tcp->GetHeaderLength(): %d, full size: %d\n",
               sizeof(TCP), tcp->GetHeaderLength(), size);*/
-          printf("  %d byte payload:\n%s\n", payload_size, payload);
+          if (g_loop_function) {
+            g_loop_function(tcp + 1, payload_size);
+          }
         }
         if (!payload_size) {
-          printf("  no payload, should other_seq_ be incremented??\n");
+          // printf("  no payload, should other_seq_ be incremented??\n");
         }
         other_seq_ += payload_size;
 
@@ -187,7 +193,22 @@ class TCPClient {
     SetState(kClosed);
   }
 
-  void Send(void* buffer, int buffer_length) {
+  void Send(const void* buffer, int buffer_length) {
+    switch (state_) {
+      case kUninitialized:
+      case kClosed:
+      case kSynSent: {
+        void* buffer_copy = malloc(buffer_length);
+        memcpy(buffer_copy, buffer, buffer_length);
+        buffered_packets_to_send_.push_back(
+            std::pair<const void*, int>(buffer_copy, buffer_length));
+        return;
+      }
+
+      case kEstablished:
+        break;
+    }
+
     TCPFlags flags;
     flags.ack = 1;
     flags.psh = 1;
@@ -209,6 +230,10 @@ class TCPClient {
 
   uint32_t init_my_seq_;
   uint32_t init_other_seq_;
+
+  // this buffers packets sent using Send() but only before
+  // state kEstablished is reached
+  std::vector<std::pair<const void*, int>> buffered_packets_to_send_;
 
   void Send(const void* buffer, int buffer_length, uint8_t flags) {
     // includes data after tcp header
@@ -232,8 +257,9 @@ class TCPClient {
 
     my_seq_ += buffer_length;
     if (!buffer_length) {
-      printf(
-          "  sending with no buffer_length. should my_seq_ be incremented??\n");
+      /*printf(
+          "  sending with no buffer_length. should my_seq_ be
+         incremented??\n");*/
     }
 
     tcp->SetAckNumber(other_seq_);
@@ -348,7 +374,7 @@ int libtcp_open(uint8_t* my_ip,
   return libtcp_fd;
 }
 
-int libtcp_send(int libtcp_fd, void* buffer, int length) {
+int libtcp_send(int libtcp_fd, const void* buffer, int length) {
   if (libtcp_fd_to_client.find(libtcp_fd) == libtcp_fd_to_client.end()) {
     return -1;
   }
@@ -360,6 +386,8 @@ int libtcp_send(int libtcp_fd, void* buffer, int length) {
 }
 
 void libtcp_loop(LibTcpLoopFunction loop_function) {
+  g_loop_function = loop_function;
+
   if (read_socket < 0) {
     read_socket = socket(AF_PACKET, SOCK_RAW, htons(ETH_P_IP));
     if (read_socket < 0) {
