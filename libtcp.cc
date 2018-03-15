@@ -26,7 +26,7 @@
 #define BUFFER_SIZE 2048
 
 #ifdef DEBUG
-#define printd(...)                             \
+#define printd(...)                                      \
   fprintf(stderr, "[%s:%03d] ", __FUNCTION__, __LINE__); \
   fprintf(stderr, __VA_ARGS__);
 #else
@@ -36,7 +36,6 @@
 #endif
 
 static int read_socket = -1;
-static uint8_t buffer[BUFFER_SIZE];
 
 static LibTcpLoopFunction g_loop_function = 0;
 
@@ -79,23 +78,27 @@ class TCPClient {
     my_seq_++;
   }
 
-  void Receive(Ethernet* ethernet, int size) {
+  int Receive(Ethernet* ethernet, int size) {
     if (size >= (int)sizeof(Ethernet) && ethernet->GetType() == ETHERTYPE_IP) {
-      Receive((IP*)(ethernet + 1), size - sizeof(Ethernet));
+      return Receive((IP*)(ethernet + 1), size - sizeof(Ethernet));
     }
+    return 0;
   }
 
-  void Receive(IP* ip, int size) {
+  int Receive(IP* ip, int size) {
     if (size >= (int)sizeof(IP) && IPAddr(my_ip_) == ip->GetDest() &&
         IPAddr(other_ip_) == ip->GetSrc() && ip->protocol == PROTOCOL_TCP) {
-      Receive((TCP*)(ip + 1), ip->GetTotalLength() - ip->GetHeaderLength());
+      return Receive((TCP*)(ip + 1),
+                     ip->GetTotalLength() - ip->GetHeaderLength());
     }
+    return 0;
   }
 
-  void Receive(TCP* tcp, int size) {
+  // returns 1 if the socket is closed
+  int Receive(TCP* tcp, int size) {
     if (size < (int)sizeof(TCP) || tcp->GetSrcPort() != other_port_ ||
         tcp->GetDestPort() != my_port_) {
-      return;
+      return 0;
     }
 
     int payload_size = size - tcp->data_offset * 4;
@@ -180,10 +183,14 @@ class TCPClient {
           fin_flags.ack = 1;
           other_seq_++;  // TODO delet this
           Send(0, 0, fin_flags.GetValue());
+
+          return 1;
         }
 
         break;
     }
+
+    return 0;
   }
 
   void Cancel() {
@@ -324,17 +331,6 @@ static int FindUnusedFd() {
   return -1;
 }
 
-static void ReadFromSocket(int socket) {
-  memset(buffer, 0, BUFFER_SIZE);
-  int bytes_read = read(socket, buffer, BUFFER_SIZE);
-  // printd("read() %d bytes\n", bytes_read);
-  for (auto it = libtcp_fd_to_client.begin(); it != libtcp_fd_to_client.end();
-       it++) {
-    TCPClient* client = it->second;
-    client->Receive((Ethernet*)buffer, bytes_read);
-  }
-}
-
 int libtcp_open(uint8_t* my_ip,
                 uint8_t* dest_ip,
                 uint16_t my_port,
@@ -407,7 +403,17 @@ void libtcp_loop(LibTcpLoopFunction loop_function) {
     }
   }
 
+  uint8_t buffer[BUFFER_SIZE];
   while (1) {
-    ReadFromSocket(read_socket);
+    memset(buffer, 0, BUFFER_SIZE);
+    int bytes_read = read(read_socket, buffer, BUFFER_SIZE);
+    for (auto it = libtcp_fd_to_client.begin(); it != libtcp_fd_to_client.end();
+         it++) {
+      TCPClient* client = it->second;
+
+      if (client->Receive((Ethernet*)buffer, bytes_read)) {
+        return;
+      }
+    }
   }
 }

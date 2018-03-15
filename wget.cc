@@ -28,6 +28,7 @@ int main(int argc, char** argv) {
   libtcp_send(libtcp_socket, http_request, strlen(http_request));
 
   libtcp_loop(LoopFunction);
+  printf("libtcp_loop returned\n");
 
   return 0;
 }
