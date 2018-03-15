@@ -25,6 +25,16 @@
 
 #define BUFFER_SIZE 2048
 
+#ifdef DEBUG
+#define printd(...)                             \
+  printf("[%s:%03d] ", __FUNCTION__, __LINE__); \
+  printf(__VA_ARGS__);
+#else
+#define printd(...) \
+  while (0)         \
+    ;
+#endif
+
 static int read_socket = -1;
 static uint8_t buffer[BUFFER_SIZE];
 
@@ -90,11 +100,11 @@ class TCPClient {
 
     int payload_size = size - tcp->data_offset * 4;
 
-    /*printf("received tcp. state: %d\n", state_);
-    printf("  fin: %d, syn: %d, rst: %d, psh: %d\n", tcp->GetFlags()->fin,
+    printd("received tcp. state: %d\n", state_);
+    printd("  fin: %d, syn: %d, rst: %d, psh: %d\n", tcp->GetFlags()->fin,
            tcp->GetFlags()->syn, tcp->GetFlags()->rst, tcp->GetFlags()->psh);
-    printf("  ack: %d, urg: %d, ece: %d, cwr: %d\n", tcp->GetFlags()->ack,
-           tcp->GetFlags()->urg, tcp->GetFlags()->ece, tcp->GetFlags()->cwr);*/
+    printd("  ack: %d, urg: %d, ece: %d, cwr: %d\n", tcp->GetFlags()->ack,
+           tcp->GetFlags()->urg, tcp->GetFlags()->ece, tcp->GetFlags()->cwr);
 
     switch (state_) {
       case kUninitialized:
@@ -102,7 +112,7 @@ class TCPClient {
         break;
 
       case kClosed:
-        printf("  state is kClosed. nani!?\n");
+        printd("  state is kClosed. nani!?\n");
         break;
 
       case kSynSent: {
@@ -111,7 +121,7 @@ class TCPClient {
         expected_flags.syn = 1;
         expected_flags.ack = 1;
         if (*(tcp->GetFlags()) != expected_flags) {
-          printf("  packet coming back should have been synack.\n");
+          printd("  packet coming back should have been synack.\n");
           Cancel();
           break;
         }
@@ -123,7 +133,7 @@ class TCPClient {
         // the last seq we fully received + 1.
 
         // send an ack
-        printf("  got synack. sending ack\n");
+        printd("  got synack. sending ack\n");
         TCPFlags ack_flags;
         ack_flags.ack = 1;
         Send(0, 0, ack_flags.GetValue());
@@ -141,16 +151,16 @@ class TCPClient {
 
       case kEstablished:
         if (tcp->GetSeq() != other_seq_) {
-          printf("  BAD tcp->GetSeq(): %u\n", tcp->GetSeq());
-          printf("         other_seq_: %u\n", other_seq_);
-          printf("    init_other_seq_: %u\n", init_other_seq_);
+          printd("  BAD tcp->GetSeq(): %u\n", tcp->GetSeq());
+          printd("         other_seq_: %u\n", other_seq_);
+          printd("    init_other_seq_: %u\n", init_other_seq_);
           break;
         }
         if (payload_size) {
           /*char* payload = (char*)calloc(1, payload_size + 1);
           memcpy(payload, tcp + 1, payload_size);
-          printf("  %d byte payload:\n%s\n", payload_size, payload);*/
-          /*printf(
+          printd("  %d byte payload:\n%s\n", payload_size, payload);*/
+          /*printd(
               "  sizeof(TCP): %lu, tcp->GetHeaderLength(): %d, full size: %d\n",
               sizeof(TCP), tcp->GetHeaderLength(), size);*/
           if (g_loop_function) {
@@ -158,13 +168,13 @@ class TCPClient {
           }
         }
         if (!payload_size) {
-          // printf("  no payload, should other_seq_ be incremented??\n");
+          // printd("  no payload, should other_seq_ be incremented??\n");
         }
         other_seq_ += payload_size;
 
         if (tcp->GetFlags()->fin) {
           // TODO only send fin back when we are done sending data n stuff.
-          printf("  received fin, sending fin back.\n");
+          printd("  received fin, sending fin back.\n");
           TCPFlags fin_flags;
           fin_flags.fin = 1;
           fin_flags.ack = 1;
@@ -183,7 +193,7 @@ class TCPClient {
         break;
       case kSynSent:
       case kEstablished: {
-        printf("  sending reset\n");
+        printd("  sending reset\n");
         TCPFlags reset_flags;
         reset_flags.rst = 1;
         Send(0, 0, reset_flags.GetValue());
@@ -257,7 +267,7 @@ class TCPClient {
 
     my_seq_ += buffer_length;
     if (!buffer_length) {
-      /*printf(
+      /*printd(
           "  sending with no buffer_length. should my_seq_ be
          incremented??\n");*/
     }
@@ -276,7 +286,7 @@ class TCPClient {
     int bytes_written = write(send_socket_, tcp, tcp_length);
     free(pseudo_header);
     if (bytes_written != tcp_length) {
-      printf("  UNABLE TO write() ENTIRE PACKET! wrote %d, expected %d\n",
+      printd("  UNABLE TO write() ENTIRE PACKET! wrote %d, expected %d\n",
              bytes_written, tcp_length);
       assert(false);
     }
@@ -291,7 +301,7 @@ class TCPClient {
         break;
       case kSynSent:
         if (state_ != kClosed) {
-          printf("state_: %d, new_state: %d\n", state_, new_state);
+          printd("state_: %d, new_state: %d\n", state_, new_state);
         }
         assert(state_ == kClosed);
         break;
@@ -317,7 +327,7 @@ static int FindUnusedFd() {
 static void ReadFromSocket(int socket) {
   memset(buffer, 0, BUFFER_SIZE);
   int bytes_read = read(socket, buffer, BUFFER_SIZE);
-  // printf("read() %d bytes\n", bytes_read);
+  // printd("read() %d bytes\n", bytes_read);
   for (auto it = libtcp_fd_to_client.begin(); it != libtcp_fd_to_client.end();
        it++) {
     TCPClient* client = it->second;
@@ -339,30 +349,30 @@ int libtcp_open(uint8_t* my_ip,
   memset(dest_ip_string, 0, 50);
   snprintf(dest_ip_string, 50, "%d.%d.%d.%d", (int)dest_ip[0], (int)dest_ip[1],
            (int)dest_ip[2], (int)dest_ip[3]);
-  printf("dest_ip_string: %s\n", dest_ip_string);
+  printd("dest_ip_string: %s\n", dest_ip_string);
 
   char dest_port_string[50];
   memset(dest_port_string, 0, 50);
   snprintf(dest_port_string, 50, "%d", dest_port);
-  printf("dest_port_string: %s\n", dest_port_string);
+  printd("dest_port_string: %s\n", dest_port_string);
 
   int getaddrinfo_retval =
       getaddrinfo(dest_ip_string, dest_port_string, &hints, &res);
   if (getaddrinfo_retval) {
-    printf("[libtcp_open] getaddrinfo() returned %d, gai_strerror(): %s\n",
+    printd("getaddrinfo() returned %d, gai_strerror(): %s\n",
            getaddrinfo_retval, gai_strerror(getaddrinfo_retval));
     return -1;
   }
 
   int send_socket_fd = socket(AF_INET, SOCK_RAW, IP_PROTOCOL_TCP);
   if (send_socket_fd < 0) {
-    printf("[libtcp_open] socket() returned %d. strerror(): %s\n",
-           send_socket_fd, strerror(errno));
+    printd("socket() returned %d. strerror(): %s\n", send_socket_fd,
+           strerror(errno));
     return -1;
   }
 
   if (connect(send_socket_fd, res->ai_addr, res->ai_addrlen)) {
-    printf("[libtcp_open] connect() failed. strerror(): %s\n", strerror(errno));
+    printd("connect() failed. strerror(): %s\n", strerror(errno));
     return -1;
   }
 
@@ -391,7 +401,7 @@ void libtcp_loop(LibTcpLoopFunction loop_function) {
   if (read_socket < 0) {
     read_socket = socket(AF_PACKET, SOCK_RAW, htons(ETH_P_IP));
     if (read_socket < 0) {
-      printf("socket(AF_PACKET) returned %d. strerror(): %s\n", read_socket,
+      printd("socket(AF_PACKET) returned %d. strerror(): %s\n", read_socket,
              strerror(errno));
       return;
     }
@@ -401,47 +411,3 @@ void libtcp_loop(LibTcpLoopFunction loop_function) {
     ReadFromSocket(read_socket);
   }
 }
-
-/*int main(int argc, char** argv) {
-  addrinfo hints, *res = 0;
-  memset(&hints, 0, sizeof(addrinfo));
-  //hints.ai_family = AF_UNSPEC;
-  //hints.ai_socktype = SOCK_STREAM;
-  //getaddrinfo("www.example.com", "3490", &hints, &res);
-  int getaddrinfo_retval =
-      getaddrinfo("192.168.248.130", "48880", &hints, &res);
-  if (getaddrinfo_retval) {
-    printf("getaddrinfo() returned %d, gai_strerror(): %s\n",
-           getaddrinfo_retval, gai_strerror(getaddrinfo_retval));
-    return 1;
-  }
-
-  socket_fd = socket(AF_INET, SOCK_RAW, IP_PROTOCOL_TCP);
-  if (socket_fd < 0) {
-    printf("socket() returned %d. strerror(): %s\n", socket_fd,
-           strerror(errno));
-    return 1;
-  }
-
-  read_socket = socket(AF_PACKET, SOCK_RAW, htons(ETH_P_IP));
-  if (read_socket < 0) {
-    printf("socket(AF_PACKET) returned %d. strerror(): %s\n", read_socket,
-           strerror(errno));
-  }
-
-  if (connect(socket_fd, res->ai_addr, res->ai_addrlen)) {
-    printf("connect() failed. strerror(): %s\n", strerror(errno));
-    return 1;
-  }
-
-  uint8_t my_ip[4] = {192, 168, 248, 10};
-  uint8_t other_ip[4] = {192, 168, 248, 130};
-
-  printf("starting client\n");
-  tcp_client.Start(socket_fd, my_ip, other_ip, 48881, 48880);
-
-  while (1) {
-    ReadFromSocket(read_socket);
-  }
-  return 0;
-}*/

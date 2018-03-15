@@ -1,4 +1,4 @@
-C_FLAGS = -g -Wall -Werror -Wno-unused-function
+C_FLAGS = -g -Wall -Werror -Wno-unused-function -DDEBUG
 CXX_FLAGS = $(C_FLAGS) -std=c++11
 
 .PHONY: all
